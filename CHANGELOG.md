@@ -12,6 +12,13 @@ stream black-box decoded byte-identically.
 
 ### Added
 
+- `Decoder::output_video_dimensions` / `output_pixel_format` on
+  `TheoraDecoder`: the picture region of the identification header in
+  force, which every frame is cropped to (headers sent once the decoder
+  is live are ignored). The format is `None` when an odd picture offset
+  with an even picture size along a subsampled axis gives the §4.4.4
+  chroma crop one more sample than the core layout has.
+
 - **Pinned Bjøntegaard battery (round 457)** — `tests/bd_rate.rs`
   encodes four deterministic 176×144 scenes (`square0`, `blobs`, `pan`,
   `cut`; 24 frames, keyframe interval 16) across the five-point quantizer

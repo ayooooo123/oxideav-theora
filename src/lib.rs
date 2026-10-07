@@ -17585,6 +17585,31 @@ impl TheoraDecoder {
         }
         Ok(())
     }
+
+    /// The identification header in force. Every frame is cropped to its
+    /// picture region (§2.2), and headers sent after the decoder is live
+    /// are ignored, so it describes every frame.
+    fn ident(&self) -> Option<&TheoraIdentHeader> {
+        match &self.state {
+            HeaderState::Collecting { ident, .. } => ident.as_ref(),
+            HeaderState::Ready(fd) => Some(fd.ident()),
+        }
+    }
+}
+
+/// The core pixel format of the frames `cropped_to_video_frame` packs for
+/// `ident`'s stream, or `None` when the §4.4.4 chroma crop has a size the
+/// core layout does not: an odd picture offset with an even picture size
+/// along a subsampled axis covers one more chroma sample than half the
+/// picture rounded up.
+fn ident_pixel_format(ident: &TheoraIdentHeader) -> Option<oxideav_core::PixelFormat> {
+    let (sx, sy) = chroma_subsampling_factors(ident.pf);
+    let chroma = (
+        chroma_crop_axis(u32::from(ident.picx), ident.picw, sx).1,
+        chroma_crop_axis(u32::from(ident.picy), ident.pich, sy).1,
+    );
+    let format = core_pixel_format(ident.pf);
+    (format.plane_dimensions(1, ident.picw, ident.pich) == Some(chroma)).then_some(format)
 }
 
 impl oxideav_core::Decoder for TheoraDecoder {
@@ -17628,6 +17653,16 @@ impl oxideav_core::Decoder for TheoraDecoder {
             .map_err(|e| oxideav_core::Error::invalid(e.to_string()))?;
         let vf = cropped_to_video_frame(&cropped, pkt.pts);
         Ok(oxideav_core::Frame::Video(vf))
+    }
+
+    fn output_video_dimensions(&self) -> Option<(u32, u32)> {
+        self.ident()
+            .map(|i| (i.picw, i.pich))
+            .filter(|&(w, h)| w > 0 && h > 0)
+    }
+
+    fn output_pixel_format(&self) -> Option<oxideav_core::PixelFormat> {
+        self.ident().and_then(ident_pixel_format)
     }
 
     fn flush(&mut self) -> oxideav_core::Result<()> {
